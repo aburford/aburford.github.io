@@ -6,4 +6,8 @@ image:  hexago.svg
 tags:   [Java]
 github: https://github.com/aburford/hexago
 ---
-This was my final project for CSE 160 Computer Science A Honors. It is a spinoff of the popular board game Pentago. Players must place a marble on the board and rotate a quadrant each turn (unless there exist any rotationally symmetric quadrants). In classic Pentago, a 6 x 6 board is used and the first player to get 5 in a row wins. Hexago allows players to select any dimension from 2 x 2 to 16 x 16 and select a required number of marbles in a row to win. I used JavaFX for the graphics.
+### What is Hexago?
+It is a spinoff of the popular board game Pentago. Players must place a marble on the board and rotate a quadrant each turn (unless there exist any rotationally symmetric quadrants). In classic Pentago, a 6 x 6 board is used and the first player to get 5 in a row wins. Hexago allows players to select any dimension from 2 x 2 to 16 x 16 and select a required number of marbles in a row to win.
+
+### Development Process
+This was my final project for CSE160 Computer Science A Honors. In addition to some essential fundamentals of computer science, this class taught how to create GUI's using JavaFX, which is what I used to make Hexago.
