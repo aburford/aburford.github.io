@@ -1,0 +1,49 @@
+.button {
+  display: inline-block;
+  white-space: nowrap;
+  vertical-align: middle;
+  font: inherit;
+  text-align: center;
+  padding: round($base-spacing-unit / 2) ($base-spacing-unit * 2);
+  border-radius: $global-radius;
+  cursor: pointer;
+  transition: $global-transition;
+
+  &--primary {
+    color: $button-color;
+    background-color: $button-background-color;
+
+    &:hover {
+      background-color: darken($primary-color, 15%);
+      color: $white;
+      transition: $global-transition;
+    }
+  }
+
+  &--big {
+    display: block;
+    width: 100%;
+  }
+}
+.better-button {
+  font-size: 14px;
+  font-weight: 700;
+  border: 1px solid #c9d3e7;
+  color: #C9D3E7;
+  transition: .35s;
+  display: inline-block;
+  white-space: nowrap;
+  vertical-align: middle;
+  font: inherit;
+  text-align: center;
+  padding: 8px 30px;
+  border-radius: 3px;
+  cursor: pointer;
+  text-decoration: none;
+
+  &:hover {
+    border: 1px solid #AB0000;
+    background: #AB0000;
+    color: #fff;
+  }
+}
