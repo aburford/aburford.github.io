@@ -6,7 +6,7 @@ image:  running.jpg
 tags:   [Objective-C, iOS]
 github: https://github.com/aburford/Run-Logger
 ---
-Run Logger allows you to easily track and record your runs right from your iPhone, iPad, or Apple Watch.
+Run Logger allows runners to easily track and record your runs right from your iPhone, iPad, or Apple Watch.
 ### The Application
 Run Logger interfaces with the LogARun website (no affiliation) to store all of your runs. Here are some of the basic features offered by Run Logger:
 * Store a variety of metrics for each run, including which pair of shoes were used to calculate shoe mileage
