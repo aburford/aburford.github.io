@@ -42,6 +42,11 @@
         <a href="{{ site.twitter }}" class="social-profiles-link"><i class="ion ion-logo-twitter"></i></a>
       </li>
       {% endif %}
+      {% if site.email %}
+      <li class="social-profiles-item">
+        <a href="mailto:{{ site.email }}" class="social-profiles-link"><i class="ion ion-ios-mail"></i></a>
+      </li>
+      {% endif %}
     </ul>
   </div>
 
