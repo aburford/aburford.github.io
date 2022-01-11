@@ -6,6 +6,20 @@ permalink: /about/
 resume: /Andrew_Burford_Resume.pdf
 ---
 
+I am pursuing an M.S. in Computer Science at Stony Brook University,
+where I also completed a B.S. in Computer Science and a B.S. in
+Applied Math and Statistics. I'm currently working as a research
+assistant in the [File systems and Storage
+Lab](https://www.fsl.cs.sunysb.edu) at Stony Brook where we are
+investigating the application of machine learning to file and storage
+systems. I'm interested in many fields in computer science such as
+machine learning, cybersecurity, and storage systems, but really I
+love any programming project that requires a strong
+mathematical understanding of what's going on. I am also an avid
+runner.
+
+### Personal Background
+
 Having had a interest in computers since a young age, I started my
 first real programming projects in high school. I taught myself basic
 programming skills and started learning about iOS app development. By
@@ -15,8 +29,7 @@ school, and by senior year I was volunteering at my high school as a
 full stack web developer working on the school's internal websites.
 During my last 2 months of high school, I completed a senior capstone
 project where I developed a system for students to securely mark their
-attendance in class using their phone (checkout my Beacon Attendance
-project for more details).
+attendance in class using their phone.
 
 It was also during my senior year of high school that I lead a trail
 maintenance community service project earning the final requirement to

@@ -1,0 +1,321 @@
+---
+layout: post
+title:  DiemBFT Implementation
+date:   2021-08-24 18:05:55 +0300
+image:  diembft.png
+tags:   [Python, Distributed Systems, Blockchain]
+github: https://github.com/aburford/diem-bft
+---
+
+In my Distributed Systems graduate class, we worked on a group project
+implementing the Byzantine Fault Tolerant distributed consensus
+algorithm desribed in the paper [DiemBFT v4: State Machine Replication
+in the Diem
+Blockchain](https://developers.diem.com/papers/diem-consensus-state-machine-replication-in-the-diem-blockchain/2021-08-17.pdf).
+There were two main phases to the project: first we implemented the
+core DiemBFT algorithm, a two phase commit, leader based consensus
+algorithm with quadratic cost view-change when a leader fails. This
+phase included the implementation of a simple testing framework
+allowing the user to specify message drops or delays in specific
+rounds for specific messages. In the second phase of the project, we
+implemented the [Twins approach](https://arxiv.org/abs/2004.10617) to
+testing BFT systems and ran more thorough tests of our DiemBFT
+implementation. Everything was done using Python with
+[DistAlgo](http://distalgo.cs.stonybrook.edu/home) extensions.
+
+### DiemBFT Implementation
+
+The main components of the DiemBFT algorithm are described in detail
+with pseudocode in the DiemBFT paper. However, several design
+decisions and components were omitted from the paper, leaving it up to
+us to determine how to complete the remaining implementation. For
+example, I was in charge of implementing how clients send transactions
+and receive confirmation of committed transactions; how replicas
+choose and verify transactions being added to the blockchain to avoid
+duplicates; and how replicas sync up to their peers when they fall behind.
+This last component proved to be the most challenging, requiring a
+solid understanding of how and why the consensus algorithm actually works.
+In terms of syncing up replicas, the paper simply mentions:
+> When a message is handled in the pseudo code, we assume that its
+> format and signature has been validated, and that the receiver has
+> synced up with all ancestors and any other data referenced by
+> meta-information in the message.
+
+Without this sync up process, a problematic scenario can arise if a
+replica $$A$$ misses an honest proposal in round $$r$$. The leader of the round
+$$r+1$$ will collect $$2f+1$$ votes and send out a proposal with a
+Quorum Certificate (QC) for round $$r$$. When replica $$A$$ receives the
+Quorum Certificate for round $$r$$, it won't have the corresponding
+block that is being certified so it must retrieve this block from one
+of its peers.
+
+The problems I needed to solve were: When do replicas check whether
+they need to sync up? What information must an outdated replica
+send to its peer and what information must the peer send back? What
+data structures need updating once a replica receives a sync
+up response?
+
+I decided to put all sync related code into a separate syncmanager
+module. Calls to syncmanager needed to be added every time a vote,
+proposal, or timeout message is received before the message is
+processed by the rest of the code. This serves two purposes: firstly,
+this will trigger a sync up if a QC in the message references an
+unknown block ID, and secondly, it prevents the message from being
+processed if a sync up is already in progress. If a sync up is
+already in progress, all vote, proposal, and timeout messages are
+held in a message buffer until the sync up finishes and these messages
+are then replayed.
+
+If a replica receives a QC referencing a block that hasn't been
+committed yet, every replica that signed the QC should have the block
+stored in its pending block tree within the BlockTree module. I
+decided to have the outdated replica send a sync request to one
+replica in the QC signator set to maintain message linearity. If this
+sync up fails, we move on to the next replica in the signator set.
+Upon receiving a sync up request, the up to date replica will send a
+list of blocks corresponding to a path in its pending block tree from
+the block with the QC for the latest committed block to the block
+with the QC from the highest round it has seen. If the outdated
+replica only fell one or two rounds behind, it can process the
+QC's in this chain and call the `execute_and_insert` function in the
+BlockTree module to add these blocks to its own pending block tree.
+
+However, this is not sufficient to sync up replicas that have fallen
+arbitrarily far behind. Replicas store pending blocks in the BlockTree module, but blocks are
+removed and sent to the Ledger module once they are committed. If an
+outdated replica missed blocks that have already been committed by the
+time it tries to sync up, these blocks must be retrieved from the
+Ledger module. This means the Ledger module needed modifying so
+that every committed block remains in memory in case it is needed for
+a sync up message. A sync request therefore contains the QC of the
+highest committed block so the up to date replica knows how many
+committed blocks it needs to send. A sync response must then contain a
+chain of committed blocks and a path of pending blocks, which is
+sufficient to catch up any replica even if it has missed every message
+since the genesis block.
+
+After some testing, I noticed there was still an annoying issue that
+delayed the sync up process for an extra round. The issue would occur
+when an outdated replica receives a proposal containing a QC for the
+block from the previous round that it missed, so it sends a sync
+request to a replica that voted in the previous round. Sometimes, the
+up to date replica will receive the sync request before it receives
+that same QC from the leader of the next round. This means the replica
+is being asked to send a sync response up to a QC that it hasn't seen
+yet. To solve this, the QC that triggered the sync in the outdated
+replica is included in the sync request so that the up to date replica
+can process that QC and update its pending block tree accordingly.
+
+### Twins Testing
+
+The Twins approach to testing Byzantine Fault Tolerant systems
+simulates faulty replicas by creating "twin" replicas. This means two
+replicas are created with all of the same cryptographic credentials
+but they act as one replica when interacting with other replicas. This
+allows for interesting behavior such as proposal equivocation, i.e. the
+twin replicas are elected as leader but each twin sends a different,
+valid proposal. Twins also creates network partitions for each round.
+Only replicas in the same cell of a partition can send and receive
+messages from each other in that round. Note that two twins can be
+placed in separate partitions in the same round. We also implemented
+an intra-partition message dropping feature to allow for more
+interesting test cases. The Twins implementation includes a test generator and
+a test executor. The generator permutes all possible partitions across
+all possible rounds with all possible assignments of leaders. A range
+of parameters exist to control the size of the search space. I was in
+charge of implementing the test executor. This component reads in test
+cases outputted by the test generator and actually executes them. It
+also checks whether safety and liveness properties are satisfied.
+
+### Test Executor Implementation
+
+I implemented the Test Executor using a TestExec class that acted as a
+central message hub that all messages must pass through. The TestExec
+class inspects the contents of each message in order to determine the
+round number and then determines whether or not to forward this
+message to the intended recipient using the network partition for this
+round and any intra-partition message drop rules.  Messages are
+redirected to this hub by subclassing the Replica class and overriding
+the send and receive methods in order to separate the Twins code from
+the DiemBFT code as much as possible.  I also overrode the
+LeaderElection module in order to elect leaders chosen by the test
+executor configuration. The more interesting design decisions came
+about during implementation of the property checking code.
+
+### Property Checking
+
+We chose to check the safety properties offline rather than online because
+checking them online adds a slight overhead during execution which can
+interfere with timeouts so it is less intrusive to perform this analysis
+after execution has finished. There are four safety and liveness
+properties specified in the DiemBFT paper that we verify.
+
+#### Property 1
+
+> If a block is certified in a round, no other block can gather $$f + 1$$
+non-Byzantine votes in the same round. Hence, at most one block is certified in
+each round.
+
+I used DistAlgo message history queries, aggregators, and
+quantifiers to check this property. We first iterate through rounds and check
+that each round satisfies the property. To check if a round satisfies the
+property, we check that for each certified block from this round, there does
+not exist another block that gathered $$f + 1$$ votes from non-twin replicas. We
+get certified blocks by iterating through all blocks which received
+$$2f + 1$$ votes.
+
+#### Property 2.
+> For every two globally direct-committed blocks $$B$$, $$B_0$$,
+> either $$B$$ ←∗ $$B_0$$ or $$B_0$$ ←∗ $$B$$.
+
+We check this property by aggregating all globally direct
+committed blocks. We also aggregate all proposed blocks along with their
+parent block. This should form a tree of blocks. We then iterate through every
+combination of globally direct committed blocks and ensure that either the
+first block extends the second xor the second block extends the first. We
+determine whether a block is globally direct committed by iterating through all
+proposed blocks and checking that there were $$f + 1$$ votes for the QC of this
+block in the round after it was proposed.
+
+
+#### Property 3.
+> Let $$r$$ be a round after GST. Every honest validator eventually
+> locally commits some block $$B$$ by calling `Ledger.commit(B.id)`
+> for $$B.round > r$$.
+
+This property is only semi-decidable since we run the algorithm for a finite
+number of rounds after GST, and it only says that eventually a block
+will be committed after GST with no bounds on when. Nevertheless, we query the
+history of committed messages sent by the Replica class when a replica locally
+commits a block. The committed message includes the id of the block, the round
+that it was proposed in, and the time when it was committed. We use a
+DistAlgo quantifier to ensure that each honest replica has committed some block in a
+round after GST.
+
+
+#### Property 4.
+> Suppose all honest validators agree on honest leaders of rounds
+> $$r$$, $$r + 1$$, $$r + 2$$ and $$r$$ occurs after GST. Then, every
+> honest validator locally direct-commits the honest block proposed in
+> round $$r$$ within $$7∆$$ time of when the first honest validator
+> entered round $$r$$.
+
+We collect some data online while the algorithm is executing in order
+to check this property. TestExec maintains a dictionary mapping round
+numbers to datetime objects representing the time when an honest
+replica first entered that round. This is computed by checking the
+round numbers of all received messages and saving the time whenever a
+message for a new round is received. Once the algorithm terminates, we
+iterate through the rounds with three consecutive honest leaders and
+then iterate through the honest replicas for each round. We query the
+message history of committed messages to ensure that each honest
+replica locally committed the block for that round within $$7∆$$ time of
+when the first replica entered the round.
+
+
+<!-- #### Text Executor Design
+
+I implemented the test executor by creating a TestCaseExec process which acts as
+a central message hub through which all messages are sent. There is also a
+MainExec process which reads in test case configurations and runs a
+TestCaseExec process for each test case configuration. 
+I then created a ReplicaTestExec class which is a subclass of Replica, but overrides the send and receive method.
+Replicas are given a list of replica
+identification strings (ex: ['a', 'b', 'c', 'd']) with no information about
+twin processes. We modify the Replica code so that whenever the send method is
+called, the to= parameter is an identifier string for another replica.
+ReplicaTestExec redirects this message to the TextCaseExec process.
+TestCaseExec then forwards the message to the corresponding replica or replicas
+if the destination replica is a twin. The receive method is also overridden in
+order to change the sender back to an identifier string rather than the
+TestCaseExec process. This way, Replicas deal only with replica identifier
+strings and not process objects. Another design choice could have been to
+perform message dropping in the ReplicaTestExec class similar to the ReplicaFI
+implementation. We chose not to do it this way because the safety and liveness
+properties require gathering information from all of the replicas so some type
+of centralized process is required anyway. Including the message dropping in a
+TestCaseExec class allows most of the test executor to be implemented in one
+place.
+
+The test generator saves test cases to a file which are read in and converted
+to TestConfig named tuples. This tuple contains some of the same information
+from the test case configuration objects used in Phase 2: the transmission
+delay bound, RNG seed, test case name, and total timeout time. In addition,
+TestConfig specifies a list of replicas and which of those are twin replicas.
+The test executor uses this information to create two dictionaries: one that
+maps a process object to its identifier string (for twins this could be either
+a or a') and one that maps an identifier string to a list of processes (list of
+length 1 for honest replicas and length 2 for twins). Note that the keys in the
+second dictionary do not differentiate between honest and twin replicas i.e. a
+is a key but a' is not. Finally, the TestConfig tuple specifies a list of
+rounds, where each round has a leader, partition, and exception rules to allow
+for intrapartition message drops. This information allows the TestCaseExec
+process to multiplex messages to and from twin replicas. Round partitions read
+in from TestConfig are converted to lists of processes in each partition
+bucket. When a message is received, we forward it to every process that matches
+the recipient string identifier and is in the same partition as the sender for
+that round.  In order to determine round numbers, the TestCaseExec performs
+some rudimentary deep packet inspection. Upon receiving a message to forward,
+it checks the type of message that is being sent and then retrieves the round
+number from this message. TestCaseExec uses this round number to check whether
+the sender and receiver are in the same partition specified in the TestConfig.
+If they are not then it checks the exception list and if there is no exception
+then it forwards the message. Otherwise, it drops the message. Round numbers
+are determined on a message by message basis so no centralized partition
+changes occur. The partitions for every round are kept in memory throughout the
+duration of execution.  Timeout messages are treated specially because
+intrapartition exceptions are ignored after two timeout messages have already
+been sent by a replica in the same round. This allows progress as long as there
+is a bucket with a quorum in each partition. Sync request and sync response
+messages were modified to include a round number which is set to the round
+number of the message that triggered the sync request. This allows sync
+messages to be filtered based on the round that the replica is syncing up to.
+In order to force specific leaders to be elected in each round, we create a new
+module for leader election which completely replaces the current LeaderElection
+module. TestCaseExec initializes this module with the list of leaders from the
+TestConfig. We modify the Replica class so that it imports this module instead
+of the diem leader election module. This module has the same method signatures
+and return types as LeaderElection, but uses the leaders provided in the
+TestConfig. This is the approach used in the Twins paper and requires the least
+modification to the Replica code since you only need to change the name of the
+module being imported.  In order for twin replicas to have equivocating
+proposals, they must generate different proposals in the same round. We modify
+the Mempool module so that instead of waiting to receive transactions from a
+set of clients and adding these to the list of pending transactions, we
+initialize the pending transactions list during setup to the same list in every
+replica except in a randomly shuffled order. This is similar to the
+implementation mentioned in Twins, where every process has a different input to
+generate transactions blocks. In our implementation, each transaction is a
+randomly generated string and the number of transactions is based on the
+maximum number of transactions per block and the number of rounds specified in
+the test configuration. Since transactions are iteratively chosen from the
+pending list to create blocks, it is highly unlikely that twins pick the same
+transactions from their randomly shuffled lists. We chose this approach because
+this is the way the Twins paper chose to implement this. This more strongly
+guarantees that proposals will equivocate than if we continued using clients
+since we cannot control the order of the delivery of client requests.  Since we
+no longer need client processes, the Replica class is modified so that instead
+of waiting for clients to say that all of their transactions were committed,
+TestCaseExec wait for replicas to reach the number of rounds specified in the
+TestConfig and then tells all of the replicas to terminate. This is checked
+using the same method to drop packets. Once a replica completes the final
+round, we stop delivering its messages. Once we have received at least one
+message in the final round from all replicas, we terminate. For the special
+case where there exists a quorumless partition, we only wait for all replicas
+to reach the round with the quorumless partition. We then wait transmission
+delay bound * 4 * 7 to ensure no further progress is made and then terminate.
+Termination is achieved by sending a done message to all the replicas just as
+was done in Phase 2.  Safety and liveness are checked after each execution
+using the history of sent and received messages in the TestCaseExec process.
+Two liveness properties from the paper require checking when blocks are locally
+committed by honest replicas. Since this cannot easily be inferred by
+inspecting messages, we modify the code in the Replica class to send a message
+to TestCaseExec when a block is locally committed. This message is essentially
+ignored by the TestCaseExec class, we only use it at the end by querying the
+received message history. Once execution has finished, we check all of the
+safety and liveness properties using the message history of received messages
+in the TestCaseExec class.
+
+-->
+
+<!-- vim:tw=70 -->

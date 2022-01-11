@@ -30,12 +30,22 @@ layout: default
 					{{ content }}
 				</div>
 				<div class="post-foot">
+                    {% if page.paper %}
+					<a class="better-button" href="{{ site.baseurl }}/{{page.paper}}"
+					onclick="window.open(this.href, '_self', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;"
+					title="Open Paper" rel="nofollow">
+						<i class="ion ion-ios-paper"></i>
+						Read the Paper
+					</a>
+                    {% endif %}
+                    {% if page.github %}
 					<a class="better-button" href="{{ page.github }}"
 					onclick="window.open(this.href, 'pop-up', 'left=20,top=20,width=500,height=500,toolbar=1,resizable=0'); return false;"
 					title="Open GitHub" rel="nofollow">
 						<i class="ion ion-logo-github"></i>
 						See code on GitHub
 					</a>
+                    {% endif %}
 				</div>
 				<div class="post-navigation">
 					{% if page.previous.url %}
