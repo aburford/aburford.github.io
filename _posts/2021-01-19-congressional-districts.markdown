@@ -2,7 +2,7 @@
 layout: post
 title:  U.S. Congressional Redistricting Explorer
 date:   2021-01-19 18:05:55 +0300
-image:  districting.png
+image:  districting.jpg
 tags:   [Python, Java, Javascript]
 github: https://github.com/mfoydl/US_Congressional_Districting
 ---
